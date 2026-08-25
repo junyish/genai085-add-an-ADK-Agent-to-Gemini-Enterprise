@@ -1,0 +1,5 @@
+google-cloud-aiplatform[agent_engines,adk] == 1.156.0
+cloudpickle
+google-cloud-bigquery
+google-auth
+pydantic

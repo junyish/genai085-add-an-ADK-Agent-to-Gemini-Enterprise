@@ -1,0 +1,14 @@
+{
+   "displayName": "BigQuery Agent",
+   "description": "Queries BigQuery data to assist with pool installation requests.",
+   "adkAgentDefinition": {
+      "provisionedReasoningEngine": {
+         "reasoningEngine": "projects/845830410380/locations/us-central1/reasoningEngines/3522243168382746624"
+      }
+   },
+   "authorizationConfig": {
+      "toolAuthorizations": [
+         "projects/845830410380/locations/global/authorizations/bigquery-agent-auth"
+      ]
+   }
+}
