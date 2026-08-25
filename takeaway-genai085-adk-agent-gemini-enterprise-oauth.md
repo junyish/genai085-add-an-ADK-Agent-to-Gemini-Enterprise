@@ -278,6 +278,108 @@ curl -X POST \
 
 ---
 
+### 3.5 Streamlined, Error-Proof Command-Line Flow (Task 5 Automation)
+
+Manually clicking through the Cloud Console or running fragmented curl commands is error-prone due to string escaping and missing project numbers. The production-ready script below automates the entire Task 5 lifecycle in one copy-paste block:
+
+#### Step 1: Export Input Credentials
+```bash
+# === EDIT THESE 5 VARIABLES ===
+export APP_ID="<YOUR_APP_ID>"
+export REASONING_ENGINE_ID="<YOUR_REASONING_ENGINE_ID>"
+export OAUTH_CLIENT_ID="<YOUR_CLIENT_ID>"
+export OAUTH_CLIENT_SECRET="<YOUR_CLIENT_SECRET>"
+export OAUTH_AUTH_URI="<YOUR_GENERATED_AUTH_URI>"
+# ==============================
+
+# Automatically fetch project details
+export PROJECT_ID=$(gcloud config get-value project)
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+export LOCATION_APP="global"
+export LOCATION_RE="us-central1"
+export AUTH_ID="bigquery-agent-auth"
+export OAUTH_TOKEN_URI="https://oauth2.googleapis.com/token"
+
+# Formats the Reasoning Engine string correctly automatically
+export ADK_DEPLOYMENT_ID="projects/${PROJECT_NUMBER}/locations/${LOCATION_RE}/reasoningEngines/${REASONING_ENGINE_ID}"
+export REASONING_ENGINE_SA="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+```
+
+#### Step 2: Execute Automated Deployment & Authorization
+```bash
+# ---------------------------------------------------------
+# A. CREATE AND SEND THE AUTHORIZATION PAYLOAD
+# ---------------------------------------------------------
+cat <<EOF > auth_payload.json
+{
+  "name": "projects/${PROJECT_NUMBER}/locations/${LOCATION_APP}/authorizations/${AUTH_ID}",
+  "displayName": "BigQuery Agent Auth",
+  "serverSideOauth2": {
+    "clientId": "${OAUTH_CLIENT_ID}",
+    "clientSecret": "${OAUTH_CLIENT_SECRET}",
+    "authorizationUri": "${OAUTH_AUTH_URI}",
+    "tokenUri": "${OAUTH_TOKEN_URI}"
+  }
+}
+EOF
+
+echo "Registering Authorization..."
+curl -sS -X POST \
+   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+   -H "Content-Type: application/json" \
+   -H "X-Goog-User-Project: ${PROJECT_ID}" \
+   "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUMBER}/locations/${LOCATION_APP}/authorizations?authorizationId=${AUTH_ID}" \
+   -d @auth_payload.json > /dev/null
+echo "✔ Authorization registered."
+
+# ---------------------------------------------------------
+# B. CREATE AND SEND THE AGENT PAYLOAD
+# ---------------------------------------------------------
+cat <<EOF > agent_payload.json
+{
+   "displayName": "BigQuery Agent",
+   "description": "Queries BigQuery data to assist with pool installation requests.",
+   "adkAgentDefinition": {
+      "provisionedReasoningEngine": {
+         "reasoningEngine": "${ADK_DEPLOYMENT_ID}"
+      }
+   },
+   "authorizationConfig": {
+      "toolAuthorizations": [
+         "projects/${PROJECT_NUMBER}/locations/${LOCATION_APP}/authorizations/${AUTH_ID}"
+      ]
+   }
+}
+EOF
+
+echo "Registering ADK Agent..."
+curl -sS -X POST \
+   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+   -H "Content-Type: application/json" \
+   -H "X-Goog-User-Project: ${PROJECT_ID}" \
+   "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/${LOCATION_APP}/collections/default_collection/engines/${APP_ID}/assistants/default_assistant/agents" \
+   -d @agent_payload.json > /dev/null
+echo "✔ Agent registered."
+
+# ---------------------------------------------------------
+# C. GRANT IAM PERMISSIONS TO REASONING ENGINE SA
+# ---------------------------------------------------------
+echo "Granting BigQuery IAM permissions to Reasoning Engine Service Account..."
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${REASONING_ENGINE_SA}" \
+    --role="roles/bigquery.user" \
+    --condition=None > /dev/null
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${REASONING_ENGINE_SA}" \
+    --role="roles/bigquery.dataEditor" \
+    --condition=None > /dev/null
+
+echo "✔ Task 5 CLI Steps Complete!"
+```
+
+---
+
 ## 4. Enterprise Publishing Comparison Matrix
 
 | Method | Registration Command / API | Auth Mechanism | Best Used For |

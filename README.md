@@ -75,6 +75,7 @@ sequenceDiagram
 genai085-add-an-ADK-Agent-to-Gemini-Enterprise/
 ├── README.md                                          # Project overview and deployment guide
 ├── takeaway-genai085-adk-agent-gemini-enterprise-oauth.md # Deep architectural & production guide
+├── deploy_and_authorize_task5.sh                      # All-in-one automated Task 5 registration script
 ├── construct_auth_uri.py                              # Helper script to format & URL-encode OAuth Auth URI
 ├── step3_payload.json                                 # Agent registration payload linking Reasoning Engine & Auth
 ├── patch_payload.json                                 # Authorization resource metadata update payload
@@ -130,72 +131,30 @@ print("Deployed Reasoning Engine Resource Name:", remote_agent.resource_name)
    python3 construct_auth_uri.py
    ```
 
-### Step 4: Provision Authorization Resource in Gemini Enterprise
+---
+
+### Step 4 & 5: Streamlined All-in-One CLI Registration (Recommended)
+
+To avoid manual JSON escaping, formatting errors, or missing IAM roles in Cloud Shell, execute the automated deployment script [`deploy_and_authorize_task5.sh`](deploy_and_authorize_task5.sh):
+
 ```bash
-export PROJECT_ID="YOUR_PROJECT_ID"
-export PROJECT_NUMBER="YOUR_PROJECT_NUMBER"
-export OAUTH_CLIENT_ID="YOUR_CLIENT_ID"
-export OAUTH_CLIENT_SECRET="YOUR_CLIENT_SECRET"
-export AUTH_URI="<OUTPUT_FROM_STEP_3>"
+# 1. Export your 5 credentials & IDs
+export APP_ID="<YOUR_GEMINI_ENTERPRISE_APP_ID>"
+export REASONING_ENGINE_ID="<YOUR_REASONING_ENGINE_ID>"
+export OAUTH_CLIENT_ID="<YOUR_CLIENT_ID>"
+export OAUTH_CLIENT_SECRET="<YOUR_CLIENT_SECRET>"
+export OAUTH_AUTH_URI="<YOUR_GENERATED_AUTH_URI>"
 
-# Create Authorization Resource
-curl -X POST \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -H "X-Goog-User-Project: ${PROJECT_ID}" \
-  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUMBER}/locations/global/authorizations?authorizationId=bigquery-agent-auth" \
-  -d '{
-    "displayName": "BigQuery Agent Auth",
-    "serverSideOauthConfig": {
-      "clientId": "'"${OAUTH_CLIENT_ID}"'",
-      "authUri": "'"${AUTH_URI}"'",
-      "tokenUri": "https://oauth2.googleapis.com/token"
-    }
-  }'
-
-# Patch Client Secret (Securely stored at rest)
-curl -X PATCH \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -H "X-Goog-User-Project: ${PROJECT_ID}" \
-  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUMBER}/locations/global/authorizations/bigquery-agent-auth?updateMask=serverSideOauthConfig.clientSecret" \
-  -d '{
-    "serverSideOauthConfig": {
-      "clientSecret": "'"${OAUTH_CLIENT_SECRET}"'"
-    }
-  }'
+# 2. Run the automated Task 5 execution script
+./deploy_and_authorize_task5.sh
 ```
 
-### Step 5: Register ADK Agent in Gemini Enterprise Engine
-Update `step3_payload.json` with your deployed Reasoning Engine resource name:
-```json
-{
-   "displayName": "BigQuery Agent",
-   "description": "Queries BigQuery data to assist with pool installation requests.",
-   "adkAgentDefinition": {
-      "provisionedReasoningEngine": {
-         "reasoningEngine": "projects/YOUR_PROJECT_NUMBER/locations/us-central1/reasoningEngines/YOUR_REASONING_ENGINE_ID"
-      }
-   },
-   "authorizationConfig": {
-      "toolAuthorizations": [
-         "projects/YOUR_PROJECT_NUMBER/locations/global/authorizations/bigquery-agent-auth"
-      ]
-   }
-}
-```
-
-Register the agent:
-```bash
-export ENGINE_ID="YOUR_GEMINI_ENTERPRISE_APP_ID"
-
-curl -X POST \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -H "X-Goog-User-Project: ${PROJECT_ID}" \
-  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUMBER}/locations/global/collections/default_collection/engines/${ENGINE_ID}/adkAgents?adkAgentId=bigquery-agent" \
-  -d @step3_payload.json
-```
+**What this script automates:**
+1. Dynamically resolves `PROJECT_ID` and `PROJECT_NUMBER` via `gcloud`.
+2. Generates `auth_payload.json` and provisions the **Authorization Resource** (`bigquery-agent-auth`) in Discovery Engine API.
+3. Generates `agent_payload.json` and registers the **ADK Agent** in the Gemini Enterprise assistant.
+4. Binds required BigQuery IAM roles (`roles/bigquery.user`, `roles/bigquery.dataEditor`) to the Reasoning Engine Service Account (`service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com`).
+5. Passes the lab progress checker ("Check my progress") immediately.
 
 ---
 
