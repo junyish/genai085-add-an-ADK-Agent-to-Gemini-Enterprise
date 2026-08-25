@@ -56,11 +56,29 @@ sequenceDiagram
 
 ---
 
-## 📊 Deployment Models Comparison: Service Account vs. User Delegation
+## 📊 2-Legged (Machine-to-Machine) vs. 3-Legged (User Consent) OAuth
+
+### 🔹 2-Legged / Server-to-Server (ADC / Client Credentials)
+* **What it is:** A direct **Machine-to-Machine (M2M)** communication flow.
+* **The "Legs" (Parties):** Involves **2 parties**: (1) Your application / server and (2) The authorization server (IAM / OAuth2 endpoint).
+* **User Involvement:** **None.** No human user is present.
+* **How it works:** The backend service presents its credentials (IAM Service Account key or ADC JWT) directly to the token server and receives an access token.
+* **Best used for:** Background tasks, automated pipelines, or services accessing shared, system-level datasets.
+
+### 🔹 3-Legged OAuth 2.0 (User Consent / Authorization Code Flow)
+* **What it is:** A **delegated authorization flow** where an app asks a human user for permission to access their private data.
+* **The "Legs" (Parties):** Involves **3 parties**: (1) The client app (Gemini Enterprise), (2) The authorization server (Google OAuth 2.0), and (3) The end-user (Resource Owner).
+* **User Involvement:** **Mandatory & Interactive.**
+* **How it works:** The user is redirected to a consent screen to click **Allow**. An authorization code is returned via redirect URI, which the backend exchanges for an access token + refresh token.
+* **Best used for:** Accessing confidential corporate resources (BigQuery with Row-Level Security, private Drive files, emails, Salesforce/Jira records).
+
+---
+
+### 📋 Side-by-Side Feature Comparison
 
 | Dimension | Service Account ADC (`lab-genai162`) | User-Delegated OAuth 2.0 (`GENAI085` / This Lab) |
 | :--- | :--- | :--- |
-| **Authentication Flow** | 2-Legged Server-to-Server | 3-Legged OAuth 2.0 User Consent Flow |
+| **Authentication Flow** | 2-Legged Server-to-Server (M2M) | 3-Legged OAuth 2.0 User Consent Flow |
 | **Identity Used** | `sa@project.iam.gserviceaccount.com` | `user@company.com` (Individual End-User) |
 | **Access Control** | Coarse-grained service account permissions | Fine-grained per-user IAM, Row-Level Security, Column Masking |
 | **User Experience** | Instant execution | First call displays interactive "Connect Account" consent modal |

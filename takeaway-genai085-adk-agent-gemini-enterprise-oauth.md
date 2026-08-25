@@ -33,9 +33,57 @@ flowchart TD
     end
 ```
 
+### 1.2 Deep Dive: 2-Legged (Server-to-Server) vs. 3-Legged (User Consent) OAuth
+
+Understanding why the industry distinguishes between "2-Legged" and "3-Legged" OAuth is essential for designing secure enterprise agent architectures:
+
+```mermaid
+flowchart LR
+    subgraph TwoLegged ["2-Legged OAuth (Machine-to-Machine / ADC)"]
+        direction TB
+        App1["<b>1. Client / App</b><br/>(ADK Agent Server)"] <-->|"Direct Token Exchange<br/>(Service Account Key / ADC)"| Auth1["<b>2. Auth Server</b><br/>(GCP IAM / OAuth2)"]
+        App1 -.->|"Executes Tool as SA"| Res1[("Resource<br/>(BigQuery)")]
+    end
+
+    subgraph ThreeLegged ["3-Legged OAuth 2.0 (User Delegation / Auth Code)"]
+        direction TB
+        User2["<b>3. Resource Owner</b><br/>(Human End-User)"] <-->|"1. Grants Consent<br/>(Sign-in / Consent Screen)"| Auth2["<b>2. Auth Server</b><br/>(Google OAuth2)"]
+        App2["<b>1. Client / App</b><br/>(Gemini Enterprise)"] <-->|"2. Exchanges Auth Code<br/>for User Access Token"| Auth2
+        App2 -.->|"3. Executes Tool on behalf of User"| Res2[("Resource<br/>(BigQuery with User ACLs)")]
+    end
+```
+
 ---
 
-### 1.2 Comparison: How `GENAI085` Differs from Previous Gemini Enterprise Deployments
+#### 🔹 1. 2-Legged / Server-to-Server (ADC / Client Credentials)
+* **What it is:** A direct **Machine-to-Machine (M2M)** communication flow where the application authenticates itself directly to access resources.
+* **The "Legs" (Parties Involved):** Involves **2 parties**:
+  1. Your application / server (the client requesting access).
+  2. The authorization server (e.g. Google Cloud IAM / OAuth2 token endpoint).
+* **User Involvement:** **None.** There is no human user sitting at a browser during authentication.
+* **How it works:** Your backend service presents its own fixed identity credentials (such as an IAM Service Account key, or a cryptographically signed JSON Web Token via GCP **Application Default Credentials / ADC**) directly to the token server. The token server validates the credentials and immediately issues an access token.
+* **Best used for:** Background batch jobs, automated cron pipelines, data ingestion daemons, or microservices querying shared, non-confidential system datasets (e.g., public catalog search in `lab-genai129` or error log ingestion in `lab-genai162`).
+
+---
+
+#### 🔹 2. 3-Legged OAuth 2.0 (User Consent / Authorization Code Flow)
+* **What it is:** A **delegated authorization flow** where an application asks a human user for explicit permission to access their personal/corporate data on their behalf without ever seeing their password.
+* **The "Legs" (Parties Involved):** Involves **3 distinct parties**:
+  1. The client application (Gemini Enterprise + ADK Agent).
+  2. The authorization server (Google OAuth 2.0 Server).
+  3. The resource owner / end-user (the human employee logged into Gemini Enterprise).
+* **User Involvement:** **Mandatory & Interactive.**
+* **How it works:** 
+  1. When a tool requires access to private data, the application redirects the user's browser to an OAuth consent screen (e.g. *"Connect BigQuery Account"*).
+  2. The human user reviews the requested scopes (`https://www.googleapis.com/auth/bigquery`) and clicks **Allow**.
+  3. The authorization server returns a short-lived **Authorization Code** to the application via a secure redirect callback URI (`https://vertexaisearch.cloud.google.com/static/oauth/oauth.html`).
+  4. Gemini Enterprise's backend securely exchanges this code for a **User Access Token** and an offline **Refresh Token**.
+  5. The agent executes tools passing the user's personal bearer token, so BigQuery evaluates queries under the user's own IAM identity.
+* **Best used for:** Accessing confidential corporate resources, user mailboxes, personal Drive files, Jira/Salesforce records, and BigQuery datasets configured with **Row-Level Security (RLS)** and column-level masking where users must only see data they personally own or have been granted access to.
+
+---
+
+### 1.3 Feature Matrix: How `GENAI085` Differs from Previous Deployments
 
 | Dimension | Previous Deployments (`lab-genai162` / `lab-genai129`) | `GENAI085` (User-Delegated OAuth in Gemini Enterprise) |
 | :--- | :--- | :--- |
@@ -44,7 +92,7 @@ flowchart TD
 | **User Experience in Gemini Enterprise** | Agent executes queries immediately without user prompt. | First tool call presents an interactive **"Connect / Authorize" consent modal** requesting access to specific scopes (e.g., `.../auth/bigquery`). |
 | **Authorization Registration** | None required; registered directly as a bare `adkAgentDefinition`. | Requires provisioning an **Authorization Resource** (`/locations/global/authorizations/...`) and binding via `authorizationConfig.toolAuthorizations`. |
 | **Token Management** | Token managed internally by GCP IAM runtime. | Gemini Enterprise securely handles OAuth 2.0 authorization code exchange, token refresh, and bearer injection to the agent toolset. |
-| **Audit & Compliance** | Cloud Audit Logs record caller as Service Account. | Cloud Audit Logs record exact end-user email (`user@example.com`) executing the SQL queries. |
+| **Audit & Compliance** | Cloud Audit Logs record caller as Service Account. | Cloud Audit Logs record exact end-user email (`user@company.com`) executing the SQL queries. |
 
 ---
 
